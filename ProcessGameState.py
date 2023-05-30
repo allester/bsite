@@ -20,6 +20,7 @@ class ProcessGameState:
     def __init__(self):
         self.n_rows = 0
         self.n_edges = 0
+        self.Zbounds = None
 
     def loadFile(self, file):
         '''
@@ -39,9 +40,9 @@ class ProcessGameState:
         self.n_rows = len(self.data)
         return self
 
-    def setBounds(self, vertices):
+    def setXYBounds(self, vertices):
         '''
-        Sets the area of interest
+        Sets the XY area of interest
 
         Converts array of n vertices into array of n+1 edges
             Assumes that each subsequent vertices are connected
@@ -69,9 +70,26 @@ class ProcessGameState:
         self.edges = np.array(edges)
         self.n_edges = len(edges)
         return self
+    
+    def setZBounds(self, bounds):
+        '''
+        Sets the Z axis bounds z1 <= Z <= z2
+
+        Parameters
+        ----------
+        bounds : {array-like} of shape (2, )
+            Lower and upper z axis int ranges
+
+        Returns
+        -------
+        self : object
+            Z bounds added
+        '''
+        self.Zbounds = bounds
+        return self
 
 
-    def process(self, bounds = True, weapons = True):
+    def process(self, bounds=True, weapons=True):
         '''
         Processes the game state
 
@@ -93,7 +111,7 @@ class ProcessGameState:
         self._validateData()
         
         if bounds:
-            positions = self.data[['x','y']]
+            positions = self.data[['x','y','z']]
             inBounds = np.zeros(self.n_rows, dtype=bool)
             for index, position in positions.iterrows():
                 inBounds[index] = self._inBounds(position)
@@ -127,6 +145,26 @@ class ProcessGameState:
 
         return weapon_classes
         
+    def hasRfSMG(self):
+        '''
+        Checks if the 'weapons_classes' column has a rifle or an smg 
+
+        Requires _getWeapons() to be invoked first though the process() method
+        
+        Returns
+        -------
+        self : object
+            Object with added column 'hasRfSMG' of type bool where True if
+            inventory contains a 'Rifle' or 'SMG'
+        '''
+        data = self.data
+        hasRfSMG = np.zeros(self.n_rows, dtype=bool)
+        for index, weapons in data['weapon_classes'].items():
+            if 'Rifle' in weapons or 'SMG' in weapons:
+                hasRfSMG[index] = True
+        self.data['hasRfSMG'] = hasRfSMG
+        
+        return self
 
     def _validateData(self):
         '''
@@ -154,13 +192,17 @@ class ProcessGameState:
 
         Parameters
         ----------
-        position :  {array-like} of shape (2, )
+        position :  {array-like} of shape (3, )
+            (x, y, z) cordinates of player
         '''
         count = 0
-        xp, yp = position
+        xp, yp, zp = position
+        z1, z2 = self.Zbounds
         for edge in self.edges:
             (x1, y1), (x2, y2) = edge
-            if (yp < y1) != (yp < y2) and xp < x1 + ((yp-y1)/y2-y2)*(x2-x1):
+            if (yp < y1) != (yp < y2) and \
+                xp < x1 + ((yp-y1)/y2-y2)*(x2-x1) and \
+                    (zp >= z1) and (zp <= z2):
                 count += 1
 
         return count%2 == 1
